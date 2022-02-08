@@ -21,12 +21,71 @@ from ipython_genutils.py3compat import cast_unicode
 from jupyter_client.session import Session
 from traitlets.config.configurable import LoggingConfigurable
 
+
+import requests
+import json
+import os
+class tokenHandler:
+    '''
+    classdocs
+    '''
+    def __init__(self,apiKey,tokenPath,token=None):
+        self.apiKey = apiKey
+        self.tokenPath = tokenPath
+        self.token = token
+        
+    def tokenRefresher(self):
+        self.token = self.tokenGenerator()
+        return self.token
+    
+    def tokenExpiryVerifier(self,instance_url,instance_id):
+        instance_path = '{}/{}'.format(instance_url,instance_id)
+        custom_header = {'Authorization': 'Bearer {}'.format(self.token)}
+        response = requests.get(instance_path, headers = custom_header)
+        if response.status_code == 200:
+            return False
+        return True
+
+
+class tokenServerless(tokenHandler):     
+          
+    def tokenGenerator(self):
+        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+        raw_data = {
+            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+            'apikey': self.apiKey
+            }
+        response = requests.post(self.tokenPath, headers = custom_header, data=raw_data)
+        json_response = json.loads(response.text)
+        self.token = json_response['access_token']
+        return self.token
+
+class tokenCPD(tokenHandler):    
+    def __init__(self,apiKey,tokenPath,token=None):
+        super().__init__(apiKey,tokenPath,token)
+        self.username = os.getenv('username')
+        self.password = os.getenv('password') 
+         
+    def tokenGenerator(self):
+        custom_header = {
+            'username' : self.username,
+            'password' : self.password
+        }
+        response = requests.get(self.tokenPath, headers = custom_header, verify=False)
+        json_response = json.loads(response.text)
+        self.token = json_response['accessToken']
+        return self.token
+
 # TODO: Find a better way to specify global configuration options
 # for a server extension.
 KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
-KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
+# KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
+iam_token = tokenServerless(KG_APIKEY, KG_IAMURL).tokenGenerator()
+full_token = "Bearer "+iam_token
+KG_HEADERS={"Authorization":full_token}
+
 if 'Authorization' not in KG_HEADERS.keys():
     KG_HEADERS.update({
         'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
@@ -399,60 +458,6 @@ class KernelSpecResourceHandler(APIHandler):
         self.finish(kernel_spec_res)
 
 
-
-import requests
-import json
-import os
-class tokenHandler:
-    '''
-    classdocs
-    '''
-    def __init__(self,apiKey,tokenPath,token=None):
-        self.apiKey = apiKey
-        self.tokenPath = tokenPath
-        self.token = token
-        
-    def tokenRefresher(self):
-        self.token = self.tokenGenerator()
-        return self.token
-    
-    def tokenExpiryVerifier(self,instance_url,instance_id):
-        instance_path = '{}/{}'.format(instance_url,instance_id)
-        custom_header = {'Authorization': 'Bearer {}'.format(self.token)}
-        response = requests.get(instance_path, headers = custom_header)
-        if response.status_code == 200:
-            return False
-        return True
-
-
-class tokenServerless(tokenHandler):     
-          
-    def tokenGenerator(self):
-        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-        raw_data = {
-            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-            'apikey': self.apiKey
-            }
-        response = requests.post(self.tokenPath, headers = custom_header, data=raw_data)
-        json_response = json.loads(response.text)
-        self.token = json_response['access_token']
-        return self.token
-
-class tokenCPD(tokenHandler):    
-    def __init__(self,apiKey,tokenPath,token=None):
-        super().__init__(apiKey,tokenPath,token)
-        self.username = os.getenv('username')
-        self.password = os.getenv('password') 
-         
-    def tokenGenerator(self):
-        custom_header = {
-            'username' : self.username,
-            'password' : self.password
-        }
-        response = requests.get(self.tokenPath, headers = custom_header, verify=False)
-        json_response = json.loads(response.text)
-        self.token = json_response['accessToken']
-        return self.token
 
 
 # -----------------------------------------------------------------------------
