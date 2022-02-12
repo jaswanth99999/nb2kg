@@ -25,56 +25,56 @@ from traitlets.config.configurable import LoggingConfigurable
 import requests
 import json
 import os
-class tokenHandler:
-    '''
-    classdocs
-    '''
-    def __init__(self,apiKey,tokenPath,token=None):
-        self.apiKey = apiKey
-        self.tokenPath = tokenPath
-        self.token = token
+# class tokenHandler:
+#     '''
+#     classdocs
+#     '''
+#     def __init__(self,apiKey,tokenPath,token=None):
+#         self.apiKey = apiKey
+#         self.tokenPath = tokenPath
+#         self.token = token
         
-    def tokenRefresher(self):
-        self.token = self.tokenGenerator()
-        return self.token
+#     def tokenRefresher(self):
+#         self.token = self.tokenGenerator()
+#         return self.token
     
-    def tokenExpiryVerifier(self,instance_url,instance_id):
-        instance_path = '{}/{}'.format(instance_url,instance_id)
-        custom_header = {'Authorization': 'Bearer {}'.format(self.token)}
-        response = requests.get(instance_path, headers = custom_header)
-        if response.status_code == 200:
-            return False
-        return True
+#     def tokenExpiryVerifier(self,instance_url,instance_id):
+#         instance_path = '{}/{}'.format(instance_url,instance_id)
+#         custom_header = {'Authorization': 'Bearer {}'.format(self.token)}
+#         response = requests.get(instance_path, headers = custom_header)
+#         if response.status_code == 200:
+#             return False
+#         return True
 
 
-class tokenServerless(tokenHandler):     
+# class tokenServerless(tokenHandler):     
           
-    def tokenGenerator(self):
-        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-        raw_data = {
-            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-            'apikey': self.apiKey
-            }
-        response = requests.post(self.tokenPath, headers = custom_header, data=raw_data)
-        json_response = json.loads(response.text)
-        self.token = json_response['access_token']
-        return self.token
+#     def tokenGenerator(self):
+#         custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+#         raw_data = {
+#             'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+#             'apikey': self.apiKey
+#             }
+#         response = requests.post(self.tokenPath, headers = custom_header, data=raw_data)
+#         json_response = json.loads(response.text)
+#         self.token = json_response['access_token']
+#         return self.token
 
-class tokenCPD(tokenHandler):    
-    def __init__(self,apiKey,tokenPath,token=None):
-        super().__init__(apiKey,tokenPath,token)
-        self.username = os.getenv('username')
-        self.password = os.getenv('password') 
+# class tokenCPD(tokenHandler):    
+#     def __init__(self,apiKey,tokenPath,token=None):
+#         super().__init__(apiKey,tokenPath,token)
+#         self.username = os.getenv('username')
+#         self.password = os.getenv('password') 
          
-    def tokenGenerator(self):
-        custom_header = {
-            'username' : self.username,
-            'password' : self.password
-        }
-        response = requests.get(self.tokenPath, headers = custom_header, verify=False)
-        json_response = json.loads(response.text)
-        self.token = json_response['accessToken']
-        return self.token
+#     def tokenGenerator(self):
+#         custom_header = {
+#             'username' : self.username,
+#             'password' : self.password
+#         }
+#         response = requests.get(self.tokenPath, headers = custom_header, verify=False)
+#         json_response = json.loads(response.text)
+#         self.token = json_response['accessToken']
+#         return self.token
 
 # TODO: Find a better way to specify global configuration options
 # for a server extension.
@@ -82,14 +82,14 @@ KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
 # KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
-iam_token = tokenServerless(KG_APIKEY, KG_IAMURL).tokenGenerator()
-full_token = "Bearer "+iam_token
-KG_HEADERS={"Authorization":full_token}
+# iam_token = tokenServerless(KG_APIKEY, KG_IAMURL).tokenGenerator()
+# full_token = "Bearer "+iam_token
+# KG_HEADERS={"Authorization":full_token}
 
-if 'Authorization' not in KG_HEADERS.keys():
-    KG_HEADERS.update({
-        'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
-    })
+# if 'Authorization' not in KG_HEADERS.keys():
+#     KG_HEADERS.update({
+#         'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
+#     })
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
 KG_CLIENT_KEY = os.getenv('KG_CLIENT_KEY')
@@ -225,6 +225,16 @@ class KernelGatewayWSClient(LoggingConfigurable):
 
     @gen.coroutine
     def _connect(self, kernel_id):
+        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+        raw_data = {
+            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+            'apikey': KG_APIKEY
+            }
+        response = requests.post(KG_IAMURL, headers = custom_header, data=raw_data)
+        json_response = json.loads(response.text)
+        iam_token = json_response['access_token']
+        full_token = "Bearer "+iam_token
+        KG_HEADERS={"Authorization":full_token}
         # NOTE(esevan): websocket is initialized before connection.
         self.ws = None
         self.kernel_id = kernel_id
@@ -235,6 +245,7 @@ class KernelGatewayWSClient(LoggingConfigurable):
             'channels'
         )
         self.log.info('Connecting to {}'.format(ws_url))
+        
         parameters = {
           "headers": KG_HEADERS,
           "validate_cert": VALIDATE_KG_CERT,
@@ -250,6 +261,7 @@ class KernelGatewayWSClient(LoggingConfigurable):
             parameters["client_cert"] = KG_CLIENT_CERT
             if KG_CLIENT_CA:
                 parameters["ca_certs"] = KG_CLIENT_CA
+        
         request = HTTPRequest(ws_url, **parameters)
         self.ws_future = websocket_connect(request)
         self.ws_future.add_done_callback(self._connection_done)
