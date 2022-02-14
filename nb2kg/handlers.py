@@ -7,6 +7,7 @@ import logging
 import mimetypes
 import random
 import requests
+import time
 
 from notebook.base.handlers import APIHandler, IPythonHandler
 from notebook.utils import url_path_join
@@ -28,6 +29,21 @@ from traitlets.config.configurable import LoggingConfigurable
 KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
+custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+raw_data = {
+    'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+    'apikey': KG_APIKEY
+    }
+response = requests.post(KG_IAMURL, headers = custom_header, data=raw_data)
+json_response = json.loads(response.text)
+iam_token = json_response['access_token']
+expiry_time = json_response['expiration']
+full_token = "Bearer "+iam_token
+KG_HEADERS={"Authorization":full_token}
+if 'Authorization' not in KG_HEADERS.keys():
+    KG_HEADERS.update({
+        'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
+    })
 
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
@@ -164,21 +180,31 @@ class KernelGatewayWSClient(LoggingConfigurable):
 
     @gen.coroutine
     def _connect(self, kernel_id):
+        epoch_time = int(time.time())
+        list_of_Globals = globals()
+        if epoch_time >= list_of_Globals['expiry_time']-3550:
         #Creating KG_HEADERS before connecting to WebSocket.
-        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-        raw_data = {
-            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-            'apikey': KG_APIKEY
-            }
-        response = requests.post(KG_IAMURL, headers = custom_header, data=raw_data)
-        json_response = json.loads(response.text)
-        iam_token = json_response['access_token']
-        full_token = "Bearer "+iam_token
-        KG_HEADERS={"Authorization":full_token}
-        if 'Authorization' not in KG_HEADERS.keys():
-            KG_HEADERS.update({
-                'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
-            })
+            custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+            raw_data = {
+                'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+                'apikey': KG_APIKEY
+                }
+            response = requests.post(KG_IAMURL, headers = custom_header, data=raw_data)
+            json_response = json.loads(response.text)
+            iam_token = json_response['access_token']
+            iam_token_expiry = json_response['expiration']
+            full_token = "Bearer "+iam_token
+            KG_HEADER={"Authorization":full_token}
+            # if 'Authorization' not in KG_HEADERS.keys():
+            #     KG_HEADERS.update({
+            #         'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
+            #     })
+            list_of_Globals['KG_HEADERS'] = KG_HEADER
+            list_of_Globals['expiry_time'] = iam_token_expiry
+            KG_HEADERS = list_of_Globals['KG_HEADERS']
+        else:
+            KG_HEADERS=list_of_Globals['KG_HEADERS']
+
 
         # NOTE(esevan): websocket is initialized before connection.
         self.ws = None
@@ -190,7 +216,7 @@ class KernelGatewayWSClient(LoggingConfigurable):
             'channels'
         )
         self.log.info('Connecting to {}'.format(ws_url))
-        
+        print(KG_HEADERS)
         parameters = {
           "headers": KG_HEADERS,
           "validate_cert": VALIDATE_KG_CERT,
