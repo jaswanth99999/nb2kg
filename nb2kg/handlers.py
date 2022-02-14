@@ -182,7 +182,7 @@ class KernelGatewayWSClient(LoggingConfigurable):
     def _connect(self, kernel_id):
         epoch_time = int(time.time())
         list_of_Globals = globals()
-        if epoch_time >= list_of_Globals['expiry_time']-3550:
+        if epoch_time >= list_of_Globals['expiry_time']-10:
         #Creating KG_HEADERS before connecting to WebSocket.
             custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
             raw_data = {
