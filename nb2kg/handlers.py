@@ -75,7 +75,7 @@ class tokenServerless():
     def token_regenerate(self):
         list_of_Globals = globals()
         epoch_time = int(time.time())
-        if epoch_time >= list_of_Globals['EXPIRY_TIME']-3550:
+        if epoch_time >= list_of_Globals['EXPIRY_TIME']-10:
         #Creating KG_HEADERS before connecting to WebSocket.
             kg_header, iam_token_expiry = tokenServerless().headergenerator(KG_APIKEY, KG_IAMURL)
             list_of_Globals['KG_HEADER'] = kg_header
