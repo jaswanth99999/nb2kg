@@ -1,6 +1,3 @@
-# Copyright (c) Jupyter Development Team.
-# Distributed under the terms of the Modified BSD License.
-
 import os
 import json
 
@@ -18,72 +15,30 @@ from notebook.utils import url_path_join
 from traitlets import Instance, Unicode, default
 
 import requests
-import json
-import os
-class tokenHandler:
-    '''
-    classdocs
-    '''
-    def __init__(self,apiKey,tokenPath,token=None):
-        self.apiKey = apiKey
-        self.tokenPath = tokenPath
-        self.token = token
-        
-    def tokenRefresher(self):
-        self.token = self.tokenGenerator()
-        return self.token
-    
-    def tokenExpiryVerifier(self,instance_url,instance_id):
-        instance_path = '{}/{}'.format(instance_url,instance_id)
-        custom_header = {'Authorization': 'Bearer {}'.format(self.token)}
-        response = requests.get(instance_path, headers = custom_header)
-        if response.status_code == 200:
-            return False
-        return True
 
 
-class tokenServerless(tokenHandler):     
+class tokenServerless():     
           
-    def tokenGenerator(self):
+    def headergenerator(self, apiKey, iamurl):
         custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
         raw_data = {
             'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-            'apikey': self.apiKey
+            'apikey': apiKey
             }
-        response = requests.post(self.tokenPath, headers = custom_header, data=raw_data)
+        response = requests.post(iamurl, headers = custom_header, data=raw_data)
         json_response = json.loads(response.text)
-        self.token = json_response['access_token']
-        return self.token
-
-class tokenCPD(tokenHandler):    
-    def __init__(self,apiKey,tokenPath,token=None):
-        super().__init__(apiKey,tokenPath,token)
-        self.username = os.getenv('username')
-        self.password = os.getenv('password') 
-         
-    def tokenGenerator(self):
-        custom_header = {
-            'username' : self.username,
-            'password' : self.password
-        }
-        response = requests.get(self.tokenPath, headers = custom_header, verify=False)
-        json_response = json.loads(response.text)
-        self.token = json_response['accessToken']
-        return self.token
-
+        iam_token = json_response['access_token']
+        full_token = "Bearer "+iam_token
+        KG_HEADER={"Authorization":full_token}
+        return KG_HEADER
 # TODO: Find a better way to specify global configuration options 
 # for a server extension.
 KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
-# KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
+KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
+KG_HEADER = None
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
-iam_token = tokenServerless(KG_APIKEY, KG_IAMURL).tokenGenerator()
-full_token = "Bearer "+iam_token
-KG_HEADERS={"Authorization":full_token}
-if 'Authorization' not in KG_HEADERS.keys():
-    KG_HEADERS.update({
-        'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
-    })
+
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
 KG_CLIENT_KEY = os.getenv('KG_CLIENT_KEY')
@@ -107,6 +62,11 @@ if KG_REQUEST_TIMEOUT < float(KERNEL_LAUNCH_TIMEOUT + KG_LAUNCH_TIMEOUT_PAD):
 
 
 def load_connection_args(**kwargs):
+    if KG_IAMURL and KG_APIKEY is not None:
+        header = tokenServerless().headergenerator(KG_APIKEY, KG_IAMURL)
+        kwargs['headers'] = kwargs.get('headers', header)
+    else:
+        kwargs['headers'] = kwargs.get('headers', KG_HEADERS)
     if KG_CLIENT_CERT:
         kwargs["client_key"] = kwargs.get("client_key", KG_CLIENT_KEY)
         kwargs["client_cert"] = kwargs.get("client_cert", KG_CLIENT_CERT)
@@ -114,7 +74,7 @@ def load_connection_args(**kwargs):
             kwargs["ca_certs"] = kwargs.get("ca_certs", KG_CLIENT_CA)
     kwargs['connect_timeout'] = kwargs.get('connect_timeout', KG_CONNECT_TIMEOUT)
     kwargs['request_timeout'] = kwargs.get('request_timeout', KG_REQUEST_TIMEOUT)
-    kwargs['headers'] = kwargs.get('headers', KG_HEADERS)
+    # kwargs['headers'] = kwargs.get('headers', KG_HEADERS)
     kwargs['validate_cert'] = kwargs.get('validate_cert', VALIDATE_KG_CERT)
     if KG_HTTP_USER:
         kwargs['auth_username'] = kwargs.get('auth_username', KG_HTTP_USER)
@@ -166,9 +126,7 @@ class RemoteKernelManager(MappingKernelManager):
     def _remove_kernel(self, kernel_id):
         """Remove a kernel from our mapping, mainly so that a dead kernel can be 
         removed without having to call shutdown_kernel.
-
         The kernel object is returned.
-
         Parameters
         ----------
         kernel_id: kernel UUID
@@ -180,7 +138,6 @@ class RemoteKernelManager(MappingKernelManager):
 
     def _kernel_id_to_url(self, kernel_id):
         """Builds a url for the given kernel UUID.
-
         Parameters
         ----------
         kernel_id: kernel UUID
@@ -190,7 +147,6 @@ class RemoteKernelManager(MappingKernelManager):
     @gen.coroutine
     def start_kernel(self, kernel_id=None, path=None, **kwargs):
         """Start a kernel for a session and return its kernel_id.
-
         Parameters
         ----------
         kernel_id : uuid
@@ -231,7 +187,6 @@ class RemoteKernelManager(MappingKernelManager):
     @gen.coroutine
     def get_kernel(self, kernel_id=None, **kwargs):
         """Get kernel for kernel_id.
-
         Parameters
         ----------
         kernel_id : uuid
@@ -258,7 +213,6 @@ class RemoteKernelManager(MappingKernelManager):
     def kernel_model(self, kernel_id):
         """Return a dictionary of kernel information described in the
         JSON standard model.
-
         Parameters
         ----------
         kernel_id : uuid
@@ -280,7 +234,6 @@ class RemoteKernelManager(MappingKernelManager):
     @gen.coroutine
     def shutdown_kernel(self, kernel_id):
         """Shutdown a kernel by its kernel uuid.
-
         Parameters
         ==========
         kernel_id : uuid
@@ -296,7 +249,6 @@ class RemoteKernelManager(MappingKernelManager):
     @gen.coroutine
     def restart_kernel(self, kernel_id, now=False, **kwargs):
         """Restart a kernel by its kernel uuid.
-
         Parameters
         ==========
         kernel_id : uuid
@@ -311,7 +263,6 @@ class RemoteKernelManager(MappingKernelManager):
     @gen.coroutine
     def interrupt_kernel(self, kernel_id, **kwargs):
         """Interrupt a kernel by its kernel uuid.
-
         Parameters
         ==========
         kernel_id : uuid
@@ -371,7 +322,6 @@ class RemoteKernelSpecManager(KernelSpecManager):
     @gen.coroutine
     def get_kernel_spec(self, kernel_name, **kwargs):
         """Get kernel spec for kernel_name.
-
         Parameters
         ----------
         kernel_name : str
@@ -394,7 +344,6 @@ class RemoteKernelSpecManager(KernelSpecManager):
     @gen.coroutine
     def get_kernel_spec_resource(self, kernel_name, path):
         """Get kernel spec for kernel_name.
-
         Parameters
         ----------
         kernel_name : str
@@ -480,15 +429,12 @@ class SessionManager(BaseSessionManager):
         
         Takes a keyword argument and searches for the value in the session
         database, then returns the rest of the session's info.
-
         Overrides base class method to turn into an async operation.
-
         Parameters
         ----------
         **kwargs : keyword argument
             must be given one of the keywords and values from the session database
             (i.e. session_id, path, kernel_id)
-
         Returns
         -------
         model : dict
@@ -505,7 +451,6 @@ class SessionManager(BaseSessionManager):
         
         Changes the values of the session with the given session_id
         with the values from the keyword arguments. 
-
         Overrides base class method to turn into an async operation.
         
         Parameters
@@ -583,7 +528,6 @@ class SessionManager(BaseSessionManager):
     @gen.coroutine
     def delete_session(self, session_id):
         """Deletes the row in the session database with given session_id.
-
         Overrides base class method to turn into an async operation.
         """
         # This is now an async operation

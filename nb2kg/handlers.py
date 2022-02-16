@@ -24,26 +24,15 @@ from jupyter_client.session import Session
 from traitlets.config.configurable import LoggingConfigurable
 
 
+
 # TODO: Find a better way to specify global configuration options
 # for a server extension.
 KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
+KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
-custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-raw_data = {
-    'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-    'apikey': KG_APIKEY
-    }
-response = requests.post(KG_IAMURL, headers = custom_header, data=raw_data)
-json_response = json.loads(response.text)
-iam_token = json_response['access_token']
-expiry_time = json_response['expiration']
-full_token = "Bearer "+iam_token
-KG_HEADERS={"Authorization":full_token}
-if 'Authorization' not in KG_HEADERS.keys():
-    KG_HEADERS.update({
-        'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
-    })
+EXPIRY_TIME = 0
+KG_HEADER = None
 
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
@@ -65,6 +54,37 @@ KG_WS_PING_INTERVAL_SECS = int(os.getenv('KG_WS_PING_INTERVAL_SECS', 30))
 KG_WS_RETRY_MAX = int(os.getenv('KG_WS_RETRY_MAX', 5))
 KG_WS_RETRY_INTERVAL = float(os.getenv('KG_WS_RETRY_INTERVAL_DEFAULT', 1.0))
 KG_WS_RETRY_INTERVAL_MAX = 30.0
+
+
+class tokenServerless():     
+          
+    def headergenerator(self, apiKey, iamurl):
+        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+        raw_data = {
+            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+            'apikey': apiKey
+            }
+        response = requests.post(iamurl, headers = custom_header, data=raw_data)
+        json_response = json.loads(response.text)
+        iam_token = json_response['access_token']
+        expiry_time = json_response['expiration']
+        full_token = "Bearer "+iam_token
+        kg_header={"Authorization":full_token}
+        return kg_header, expiry_time
+
+    def token_regenerate(self):
+        list_of_Globals = globals()
+        epoch_time = int(time.time())
+        if epoch_time >= list_of_Globals['EXPIRY_TIME']-3550:
+        #Creating KG_HEADERS before connecting to WebSocket.
+            kg_header, iam_token_expiry = tokenServerless().headergenerator(KG_APIKEY, KG_IAMURL)
+            list_of_Globals['KG_HEADER'] = kg_header
+            list_of_Globals['EXPIRY_TIME'] = iam_token_expiry
+            KG_HEADERS = kg_header
+        else:
+            KG_HEADERS = list_of_Globals['KG_HEADER']
+        return KG_HEADERS
+            
 
 
 class WebSocketChannelsHandler(WebSocketHandler, IPythonHandler):
@@ -167,7 +187,7 @@ class WebSocketChannelsHandler(WebSocketHandler, IPythonHandler):
         return ''.join(summary)
 
 
-class KernelGatewayWSClient(LoggingConfigurable):
+class KernelGatewayWSClient(LoggingConfigurable, tokenServerless):
     """Proxy web socket connection to a kernel/enterprise gateway."""
 
     def __init__(self, **kwargs):
@@ -180,32 +200,12 @@ class KernelGatewayWSClient(LoggingConfigurable):
 
     @gen.coroutine
     def _connect(self, kernel_id):
-        epoch_time = int(time.time())
-        list_of_Globals = globals()
-        if epoch_time >= list_of_Globals['expiry_time']-10:
-        #Creating KG_HEADERS before connecting to WebSocket.
-            custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-            raw_data = {
-                'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-                'apikey': KG_APIKEY
-                }
-            response = requests.post(KG_IAMURL, headers = custom_header, data=raw_data)
-            json_response = json.loads(response.text)
-            iam_token = json_response['access_token']
-            iam_token_expiry = json_response['expiration']
-            full_token = "Bearer "+iam_token
-            KG_HEADER={"Authorization":full_token}
-            # if 'Authorization' not in KG_HEADERS.keys():
-            #     KG_HEADERS.update({
-            #         'Authorization': 'token {}'.format(os.getenv('KG_AUTH_TOKEN', ''))
-            #     })
-            list_of_Globals['KG_HEADERS'] = KG_HEADER
-            list_of_Globals['expiry_time'] = iam_token_expiry
-            KG_HEADERS = list_of_Globals['KG_HEADERS']
+        if KG_IAMURL and KG_APIKEY is not None:
+            KG_HEADERS = tokenServerless().token_regenerate()
+            self.log.debug("New Token has been Generated.")
         else:
-            KG_HEADERS=list_of_Globals['KG_HEADERS']
-
-
+            KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
+            
         # NOTE(esevan): websocket is initialized before connection.
         self.ws = None
         self.kernel_id = kernel_id
@@ -216,7 +216,6 @@ class KernelGatewayWSClient(LoggingConfigurable):
             'channels'
         )
         self.log.info('Connecting to {}'.format(ws_url))
-        print(KG_HEADERS)
         parameters = {
           "headers": KG_HEADERS,
           "validate_cert": VALIDATE_KG_CERT,
