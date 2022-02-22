@@ -23,6 +23,8 @@ from ipython_genutils.py3compat import cast_unicode
 from jupyter_client.session import Session
 from traitlets.config.configurable import LoggingConfigurable
 
+from nb2kg.managers import KG_AUTHSCHEM
+
 
 
 # TODO: Find a better way to specify global configuration options
@@ -31,6 +33,7 @@ KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
 KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
+KG_AUTHSCHEM = os.getenv('KG_AUTHSCHEM')
 EXPIRY_TIME = 0
 KG_HEADER = None
 
@@ -56,9 +59,9 @@ KG_WS_RETRY_INTERVAL = float(os.getenv('KG_WS_RETRY_INTERVAL_DEFAULT', 1.0))
 KG_WS_RETRY_INTERVAL_MAX = 30.0
 
 
-class tokenServerless():     
+class TokenHelper():     
           
-    def headergenerator(self, apiKey, iamurl):
+    def IBMHeaderGenerator(self, apiKey, iamurl):
         custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
         raw_data = {
             'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
@@ -72,12 +75,12 @@ class tokenServerless():
         kg_header={"Authorization":full_token}
         return kg_header, expiry_time
 
-    def token_regenerate(self):
+    def IBMTokenGenerator(self):
         list_of_Globals = globals()
         epoch_time = int(time.time())
         if epoch_time >= list_of_Globals['EXPIRY_TIME']-10:
         #Creating KG_HEADERS before connecting to WebSocket.
-            kg_header, iam_token_expiry = tokenServerless().headergenerator(KG_APIKEY, KG_IAMURL)
+            kg_header, iam_token_expiry = TokenHelper().IBMHeaderGenerator(KG_APIKEY, KG_IAMURL)
             list_of_Globals['KG_HEADER'] = kg_header
             list_of_Globals['EXPIRY_TIME'] = iam_token_expiry
             KG_HEADERS = kg_header
@@ -187,7 +190,7 @@ class WebSocketChannelsHandler(WebSocketHandler, IPythonHandler):
         return ''.join(summary)
 
 
-class KernelGatewayWSClient(LoggingConfigurable, tokenServerless):
+class KernelGatewayWSClient(LoggingConfigurable, TokenHelper):
     """Proxy web socket connection to a kernel/enterprise gateway."""
 
     def __init__(self, **kwargs):
@@ -200,8 +203,8 @@ class KernelGatewayWSClient(LoggingConfigurable, tokenServerless):
 
     @gen.coroutine
     def _connect(self, kernel_id):
-        if KG_IAMURL and KG_APIKEY is not None:
-            KG_HEADERS = tokenServerless().token_regenerate()
+        if KG_AUTHSCHEM == "ibm-iam":
+            KG_HEADERS = TokenHelper().IBMTokenGenerator()
             self.log.debug("New Token has been Generated.")
         else:
             KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))

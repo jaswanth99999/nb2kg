@@ -17,9 +17,9 @@ from traitlets import Instance, Unicode, default
 import requests
 
 
-class tokenServerless():     
+class TokenHelper():     
           
-    def headergenerator(self, apiKey, iamurl):
+    def IBMHeaderGenerator(self, apiKey, iamurl):
         custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
         raw_data = {
             'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
@@ -38,6 +38,7 @@ KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_HEADER = None
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
+KG_AUTHSCHEM = os.getenv('KG_AUTHSCHEM')
 
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
@@ -62,8 +63,8 @@ if KG_REQUEST_TIMEOUT < float(KERNEL_LAUNCH_TIMEOUT + KG_LAUNCH_TIMEOUT_PAD):
 
 
 def load_connection_args(**kwargs):
-    if KG_IAMURL and KG_APIKEY is not None:
-        header = tokenServerless().headergenerator(KG_APIKEY, KG_IAMURL)
+    if KG_AUTHSCHEM == "ibm-iam":
+        header = TokenHelper().IBMHeaderGenerator(KG_APIKEY, KG_IAMURL)
         kwargs['headers'] = kwargs.get('headers', header)
     else:
         kwargs['headers'] = kwargs.get('headers', KG_HEADERS)
