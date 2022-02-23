@@ -1,5 +1,6 @@
 import os
 import json
+import requests
 
 from tornado import gen
 from tornado.escape import json_encode, json_decode, url_escape
@@ -14,23 +15,8 @@ from notebook.utils import url_path_join
 
 from traitlets import Instance, Unicode, default
 
-import requests
 
 
-class TokenHelper():     
-          
-    def IBMHeaderGenerator(self, apiKey, iamurl):
-        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-        raw_data = {
-            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
-            'apikey': apiKey
-            }
-        response = requests.post(iamurl, headers = custom_header, data=raw_data)
-        json_response = json.loads(response.text)
-        iam_token = json_response['access_token']
-        full_token = "Bearer "+iam_token
-        KG_HEADER={"Authorization":full_token}
-        return KG_HEADER
 # TODO: Find a better way to specify global configuration options 
 # for a server extension.
 KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
@@ -38,7 +24,7 @@ KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_HEADER = None
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
-KG_AUTHSCHEM = os.getenv('KG_AUTHSCHEM')
+KG_TOKEN_GRANT_TYPE = os.getenv('KG_TOKEN_GRANT_TYPE')
 
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
@@ -61,10 +47,24 @@ os.environ['KERNEL_LAUNCH_TIMEOUT'] = str(KERNEL_LAUNCH_TIMEOUT)
 if KG_REQUEST_TIMEOUT < float(KERNEL_LAUNCH_TIMEOUT + KG_LAUNCH_TIMEOUT_PAD):
     KG_REQUEST_TIMEOUT = float(KERNEL_LAUNCH_TIMEOUT + KG_LAUNCH_TIMEOUT_PAD)
 
+class TokenHelper():     
+          
+    def HeaderGenerator(self, apiKey, iamurl):
+        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+        raw_data = {
+            'grant_type': KG_TOKEN_GRANT_TYPE,
+            'apikey': apiKey
+            }
+        response = requests.post(iamurl, headers = custom_header, data=raw_data)
+        json_response = json.loads(response.text)
+        iam_token = json_response['access_token']
+        full_token = "Bearer "+iam_token
+        KG_HEADER={"Authorization":full_token}
+        return KG_HEADER
 
 def load_connection_args(**kwargs):
-    if KG_AUTHSCHEM == "ibm-iam":
-        header = TokenHelper().IBMHeaderGenerator(KG_APIKEY, KG_IAMURL)
+    if KG_APIKEY and KG_IAMURL is not None:
+        header = TokenHelper().HeaderGenerator(KG_APIKEY, KG_IAMURL)
         kwargs['headers'] = kwargs.get('headers', header)
     else:
         kwargs['headers'] = kwargs.get('headers', KG_HEADERS)

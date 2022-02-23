@@ -23,7 +23,6 @@ from ipython_genutils.py3compat import cast_unicode
 from jupyter_client.session import Session
 from traitlets.config.configurable import LoggingConfigurable
 
-from nb2kg.managers import KG_AUTHSCHEM
 
 
 
@@ -33,7 +32,7 @@ KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
 KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_APIKEY = os.getenv('KG_APIKEY')
 KG_IAMURL = os.getenv('KG_IAMURL')
-KG_AUTHSCHEM = os.getenv('KG_AUTHSCHEM')
+KG_TOKEN_GRANT_TYPE = os.getenv('KG_TOKEN_GRANT_TYPE')
 EXPIRY_TIME = 0
 KG_HEADER = None
 
@@ -61,10 +60,10 @@ KG_WS_RETRY_INTERVAL_MAX = 30.0
 
 class TokenHelper():     
           
-    def IBMHeaderGenerator(self, apiKey, iamurl):
+    def HeaderGenerator(self, apiKey, iamurl):
         custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
         raw_data = {
-            'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+            'grant_type': KG_TOKEN_GRANT_TYPE,
             'apikey': apiKey
             }
         response = requests.post(iamurl, headers = custom_header, data=raw_data)
@@ -75,12 +74,12 @@ class TokenHelper():
         kg_header={"Authorization":full_token}
         return kg_header, expiry_time
 
-    def IBMTokenGenerator(self):
+    def TokenGenerator(self):
         list_of_Globals = globals()
         epoch_time = int(time.time())
         if epoch_time >= list_of_Globals['EXPIRY_TIME']-10:
         #Creating KG_HEADERS before connecting to WebSocket.
-            kg_header, iam_token_expiry = TokenHelper().IBMHeaderGenerator(KG_APIKEY, KG_IAMURL)
+            kg_header, iam_token_expiry = TokenHelper().HeaderGenerator(KG_APIKEY, KG_IAMURL)
             list_of_Globals['KG_HEADER'] = kg_header
             list_of_Globals['EXPIRY_TIME'] = iam_token_expiry
             KG_HEADERS = kg_header
@@ -203,8 +202,8 @@ class KernelGatewayWSClient(LoggingConfigurable, TokenHelper):
 
     @gen.coroutine
     def _connect(self, kernel_id):
-        if KG_AUTHSCHEM == "ibm-iam":
-            KG_HEADERS = TokenHelper().IBMTokenGenerator()
+        if KG_APIKEY and KG_IAMURL is not None:
+            KG_HEADERS = TokenHelper().TokenGenerator()
             self.log.debug("New Token has been Generated.")
         else:
             KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
