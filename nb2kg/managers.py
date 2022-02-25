@@ -22,9 +22,10 @@ from traitlets import Instance, Unicode, default
 KG_URL = os.getenv('KG_URL', 'http://127.0.0.1:8888/')
 KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
 KG_HEADER = None
-KG_APIKEY = os.getenv('KG_APIKEY')
-KG_IAMURL = os.getenv('KG_IAMURL')
-KG_TOKEN_GRANT_TYPE = os.getenv('KG_TOKEN_GRANT_TYPE')
+KG_IAM_APIKEY = os.getenv('KG_APIKEY')
+KG_IAM_URL = os.getenv('KG_IAMURL')
+KG_IAM_ADDITIONAL_HEADERS = json.loads(os.getenv('KG_IAM_ADDITIONAL_HEADERS', '{}'))
+KG_IAM_ADDITIONAL_DATA = json.loads(os.getenv('KG_IAM_ADDITIONAL_DATA', '{}'))
 
 VALIDATE_KG_CERT = os.getenv('VALIDATE_KG_CERT') not in ['no', 'false']
 
@@ -50,11 +51,19 @@ if KG_REQUEST_TIMEOUT < float(KERNEL_LAUNCH_TIMEOUT + KG_LAUNCH_TIMEOUT_PAD):
 class TokenHelper():     
           
     def HeaderGenerator(self, apiKey, iamurl):
-        custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
-        raw_data = {
-            'grant_type': KG_TOKEN_GRANT_TYPE,
-            'apikey': apiKey
-            }
+        if len(KG_IAM_ADDITIONAL_HEADERS)>0:
+            custom_header = json.loads(os.getenv('KG_IAM_ADDITIONAL_HEADERS', '{}'))
+        else:
+            custom_header = {'Content-Type': 'application/x-www-form-urlencoded'}
+
+        if len(KG_IAM_ADDITIONAL_DATA)>0:
+            raw_data = json.loads(os.getenv('KG_IAM_ADDITIONAL_DATA', '{}'))
+            raw_data['apikey'] = apiKey
+        else:
+            raw_data = {
+                'grant_type': 'urn:ibm:params:oauth:grant-type:apikey',
+                'apikey': apiKey
+                }
         response = requests.post(iamurl, headers = custom_header, data=raw_data)
         json_response = json.loads(response.text)
         iam_token = json_response['access_token']
@@ -63,8 +72,8 @@ class TokenHelper():
         return KG_HEADER
 
 def load_connection_args(**kwargs):
-    if KG_APIKEY and KG_IAMURL is not None:
-        header = TokenHelper().HeaderGenerator(KG_APIKEY, KG_IAMURL)
+    if KG_IAM_APIKEY and KG_IAM_URL is not None:
+        header = TokenHelper().HeaderGenerator(KG_IAM_APIKEY, KG_IAM_URL)
         kwargs['headers'] = kwargs.get('headers', header)
     else:
         kwargs['headers'] = kwargs.get('headers', KG_HEADERS)
