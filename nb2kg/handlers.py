@@ -217,7 +217,6 @@ class KernelGatewayWSClient(LoggingConfigurable, TokenHelper):
             self.log.debug("New Token has been Generated.")
         else:
             KG_HEADERS = json.loads(os.getenv('KG_HEADERS', '{}'))
-        print(KG_HEADERS)
         # NOTE(esevan): websocket is initialized before connection.
         self.ws = None
         self.kernel_id = kernel_id
